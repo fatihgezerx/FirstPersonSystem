@@ -1,0 +1,21 @@
+{
+    "name": "FirstPersonSystem.Runtime",
+    "rootNamespace": "FirstPersonSystem",
+    "references": [
+        "UniTask",
+        "Unity.InputSystem",
+        "SurfaceSystem.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HAS_UNITASK",
+        "HAS_INPUT_SYSTEM"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
