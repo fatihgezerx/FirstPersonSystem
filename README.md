@@ -15,10 +15,13 @@ assigned.
 
 ## Features
 
+- Keyboard / mouse **and gamepad** (left stick move, right stick look), read together every frame -
+  any device may be missing or unplugged at any time without stopping the rig
 - Mouse look with a pitch clamp, click-to-recapture cursor handling (Esc releases it, a click on the
   Game view locks it again) and a smooth FOV narrowing while sprinting
-- Walk / run / crouch speeds; **crouch is hold-to-crouch** (`Left Ctrl`). When released under a low
-  ceiling the rig stays crouched until there is room to stand, checked against a configurable layer mask
+- Walk / run / crouch speeds; **crouch is hold-to-crouch** (`Left Ctrl` / gamepad East). When released
+  under a low ceiling the rig stays crouched until there is room to stand, checked against a configurable
+  layer mask (without toggling the `CharacterController`, so grounding is never disturbed)
 - Jump with height and gravity, plus an **Ascent Ease** curve that reshapes how the rise *looks*
   without changing how high or how long the jump is
 - Speed is locked at the moment the feet leave the ground (jumping or walking off a ledge), so
@@ -71,14 +74,16 @@ a child, because yaw rotates the body and pitch rotates only the camera pivot.
 
 **3. Press Play.**
 
-| Input | Action |
-|-------|--------|
-| `W` `A` `S` `D` | Move |
-| Mouse | Look |
-| `Left Shift` | Run (hold) |
-| `Left Ctrl` | Crouch (hold) |
-| `Space` | Jump |
-| `Esc` | Release / recapture the cursor |
+| Keyboard / mouse | Gamepad | Action |
+|------------------|---------|--------|
+| `W` `A` `S` `D` | Left stick | Move |
+| Mouse | Right stick | Look |
+| `Left Shift` | L3 (left stick click) | Run (hold) |
+| `Left Ctrl` | East button (B / Circle) | Crouch (hold) |
+| `Space` | South button (A / Cross) | Jump |
+| `Esc` | - | Release / recapture the cursor |
+
+The bindings are fixed in code; there is no rebinding yet.
 
 ### Surface footsteps (optional)
 
@@ -90,7 +95,7 @@ calls `Footstep()` at the interval of the current move state and on every landin
 
 | Section | Settings |
 |---------|----------|
-| Look | Mouse Sensitivity, Pitch Clamp, Run FOV, FOV Transition Speed |
+| Look | Mouse Sensitivity, Gamepad Sensitivity (degrees per second at full stick), Pitch Clamp, Run FOV, FOV Transition Speed |
 | Move | Walk Speed, Run Speed |
 | Jump | Jump Height, Gravity, Ascent Ease |
 | Crouch | Crouch Speed, Stand Height, Crouch Height, Transition Speed, Stand Up Obstruction Mask |

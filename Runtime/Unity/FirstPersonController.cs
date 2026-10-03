@@ -54,9 +54,26 @@ namespace FirstPersonSystem
         // Blocks jump input for the same span as the land bump (HeadbobData.LandDuration) so a landing can't be
         // cut off by an immediate next jump. 0 when no HeadbobData is assigned - jump is never gated.
         private float _landLockTimer;
+        // Reused by every stand-up obstruction query so a forced crouch never allocates.
+        private readonly Collider[] _obstructionBuffer = new Collider[8];
+
+        // A hitch (scene load, breakpoint, alt-tab) can produce one huge frame; unclamped, it would spike gravity and
+        // could push the CharacterController through thin floors.
+        private const float MaxDeltaTime = 0.1f;
+        // Small downward velocity held while grounded so the CharacterController keeps reporting isGrounded.
+        private const float GroundedStickVelocity = -2f;
+        // Squared move-input length above which the rig counts as walking (ignores stick noise).
+        private const float MoveInputThresholdSqr = 0.01f;
 
         private void OnEnable()
         {
+            if (data == null)
+            {
+                Debug.LogError($"[FirstPersonController] Data is not assigned on '{name}'. Assign an FPSData asset (Create > First Person System > FPS Data).", this);
+                enabled = false;
+                return;
+            }
+
             _controller = GetComponent<CharacterController>();
             CacheSurfaceHandler();
 
@@ -102,18 +119,17 @@ namespace FirstPersonSystem
         {
             while (!token.IsCancellationRequested)
             {
+                // Any of these may be null at any time (gamepad-only console, a device unplugged and plugged back
+                // in) - the loop just reads whatever is there this frame instead of ending.
                 var keyboard = Keyboard.current;
                 var mouse = Mouse.current;
-                if (keyboard == null || mouse == null)
-                {
-                    return;
-                }
+                var gamepad = Gamepad.current;
 
-                if (keyboard.escapeKey.wasPressedThisFrame)
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
                 {
                     SetCursorLocked(!_cursorLocked);
                 }
-                else if (!_cursorLocked && mouse.leftButton.wasPressedThisFrame)
+                else if (!_cursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
                 {
                     // Standard "click to capture" behavior: once unlocked (Escape, or focus was lost elsewhere),
                     // the very first click back on the Game view re-locks and re-enables look immediately -
@@ -132,23 +148,24 @@ namespace FirstPersonSystem
                     Cursor.visible = false;
                 }
 
-                var deltaTime = Time.deltaTime;
+                var deltaTime = Mathf.Min(Time.deltaTime, MaxDeltaTime);
 
                 if (_cursorLocked)
                 {
-                    Look(mouse);
+                    Look(mouse, gamepad, deltaTime);
                 }
 
-                // Crouch key held: always crouch. Released: stand back up, unless something above would block it -
-                // in which case stay crouched (forced, not a toggle) until the obstruction clears on its own.
-                var crouchHeld = keyboard.leftCtrlKey.isPressed;
+                // Crouch held (Ctrl / gamepad East): always crouch. Released: stand back up, unless something above
+                // would block it - in which case stay crouched (forced, not a toggle) until the obstruction clears.
+                var crouchHeld = (keyboard != null && keyboard.leftCtrlKey.isPressed) || (gamepad != null && gamepad.buttonEast.isPressed);
                 _isCrouching = crouchHeld || (_isCrouching && IsStandUpBlocked());
 
-                var isRunning = keyboard.leftShiftKey.isPressed;
+                var isRunning = (keyboard != null && keyboard.leftShiftKey.isPressed) || (gamepad != null && gamepad.leftStickButton.isPressed);
                 var speed = _isCrouching ? data.Crouch.CrouchSpeed : isRunning ? data.Move.RunSpeed : data.Move.WalkSpeed;
 
-                var moveInput = ReadMoveInput(keyboard);
-                var isMoving = Move(moveInput, speed, keyboard.spaceKey.wasPressedThisFrame, deltaTime, out var justLanded, out var justJumped, out var grounded);
+                var jumpPressed = (keyboard != null && keyboard.spaceKey.wasPressedThisFrame) || (gamepad != null && gamepad.buttonSouth.wasPressedThisFrame);
+                var moveInput = ReadMoveInput(keyboard, gamepad);
+                var isMoving = Move(moveInput, speed, jumpPressed, deltaTime, out var justLanded, out var justJumped, out var grounded);
 
                 UpdateCrouch(_isCrouching, deltaTime);
                 UpdateHeadbob(isMoving, isRunning, _isCrouching, grounded, justJumped, justLanded, deltaTime);
@@ -164,9 +181,21 @@ namespace FirstPersonSystem
             }
         }
 
-        private void Look(Mouse mouse)
+        // Mouse delta is already a per-frame amount; the stick is a rate, so it's scaled by deltaTime to stay
+        // frame-rate independent.
+        private void Look(Mouse mouse, Gamepad gamepad, float deltaTime)
         {
-            var delta = mouse.delta.ReadValue() * data.Look.MouseSensitivity;
+            var delta = Vector2.zero;
+            if (mouse != null)
+            {
+                delta += mouse.delta.ReadValue() * data.Look.MouseSensitivity;
+            }
+
+            if (gamepad != null)
+            {
+                delta += gamepad.rightStick.ReadValue() * (data.Look.GamepadSensitivity * deltaTime);
+            }
+
             transform.Rotate(Vector3.up, delta.x);
 
             if (cameraPivot == null)
@@ -191,11 +220,23 @@ namespace FirstPersonSystem
             playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFov, data.Look.FovTransitionSpeed * deltaTime);
         }
 
-        private static Vector2 ReadMoveInput(Keyboard keyboard)
+        // WASD (normalized, so diagonals aren't faster) plus the left stick (keeps its analog magnitude).
+        private static Vector2 ReadMoveInput(Keyboard keyboard, Gamepad gamepad)
         {
-            var x = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
-            var y = (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f);
-            return new Vector2(x, y).normalized;
+            var input = Vector2.zero;
+            if (keyboard != null)
+            {
+                var x = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
+                var y = (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f);
+                input = new Vector2(x, y).normalized;
+            }
+
+            if (gamepad != null)
+            {
+                input += gamepad.leftStick.ReadValue();
+            }
+
+            return Vector2.ClampMagnitude(input, 1f);
         }
 
         // Returns whether the rig counts as "walking" this frame (grounded + horizontal input), for the footstep
@@ -217,7 +258,7 @@ namespace FirstPersonSystem
 
             if (grounded && _verticalVelocity < 0f)
             {
-                _verticalVelocity = -2f;
+                _verticalVelocity = GroundedStickVelocity;
                 _initialJumpVelocity = 0f;
             }
 
@@ -253,13 +294,16 @@ namespace FirstPersonSystem
             var motion = horizontal + Vector3.up * appliedVerticalVelocity;
             _controller.Move(motion * deltaTime);
 
-            return grounded && input.sqrMagnitude > 0.01f;
+            return grounded && input.sqrMagnitude > MoveInputThresholdSqr;
         }
 
         // Checked only when Crouch is released: a capsule from the current (possibly still-shrinking) capsule top
-        // up to where Stand Height would put the new top. True while anything occupies that space. The
-        // CharacterController is briefly disabled for this one query only - otherwise it detects its own capsule
-        // (it's a Collider too) and would report "blocked" against itself every time, regardless of layer mask.
+        // up to where Stand Height would put the new top sphere (starting at the top, not a radius below it, keeps
+        // the query's bottom sphere clear of the floor). True while anything but this rig's own
+        // CharacterController occupies that space. The controller is never disabled for the query (that would
+        // recreate its native controller and reset isGrounded every frame of a forced crouch) - its own collider
+        // is skipped by reference instead. A full buffer counts as blocked, the safe side. Radius is shrunk by the
+        // skin width so a wall the controller is resting against doesn't read as an obstruction.
         private bool IsStandUpBlocked()
         {
             var standHeight = data.Crouch.StandHeight;
@@ -272,11 +316,22 @@ namespace FirstPersonSystem
             var from = transform.position + Vector3.up * _controller.height;
             var to = transform.position + Vector3.up * (standHeight - radius);
 
-            _controller.enabled = false;
-            var blocked = Physics.CheckCapsule(from, to, radius, data.Crouch.StandUpObstructionMask, QueryTriggerInteraction.Ignore);
-            _controller.enabled = true;
+            var count = Physics.OverlapCapsuleNonAlloc(from, to, Mathf.Max(radius - _controller.skinWidth, 0.01f),
+                _obstructionBuffer, data.Crouch.StandUpObstructionMask, QueryTriggerInteraction.Ignore);
+            if (count == _obstructionBuffer.Length)
+            {
+                return true;
+            }
 
-            return blocked;
+            for (var i = 0; i < count; i++)
+            {
+                if (_obstructionBuffer[i] != _controller)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // Camera drops by exactly however much the capsule's height just shrank, so the head follows the crouch
@@ -411,8 +466,17 @@ namespace FirstPersonSystem
         // branches keep the exact same shape so the rest of the class never needs its own #if.
 #if HAS_SURFACE_SYSTEM
         private SurfaceSystem.SurfaceHandler _surfaceHandler;
-        private void CacheSurfaceHandler() => _surfaceHandler = GetComponent<SurfaceSystem.SurfaceHandler>();
-        private void PlayFootstep() => _surfaceHandler?.Footstep();
+        // TryGetComponent + an explicit != null: in the Editor a missing GetComponent result is a fake-null object
+        // that `?.` would not skip, so Footstep() would throw MissingComponentException on a rig without a handler.
+        private void CacheSurfaceHandler() => TryGetComponent(out _surfaceHandler);
+
+        private void PlayFootstep()
+        {
+            if (_surfaceHandler != null)
+            {
+                _surfaceHandler.Footstep();
+            }
+        }
 #else
         private void CacheSurfaceHandler() { }
         private void PlayFootstep() { }

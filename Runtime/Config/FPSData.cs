@@ -8,6 +8,9 @@ namespace FirstPersonSystem
     public sealed class LookSettings
     {
         [SerializeField] private float mouseSensitivity = 0.1f;
+
+        [Tooltip("Right stick look speed at full deflection, in degrees per second.")]
+        [SerializeField] private float gamepadSensitivity = 180f;
         [SerializeField] private Vector2 pitchClamp = new(-85f, 85f);
 
         [Tooltip("Field of View while running. The controller eases toward this and back using whatever FOV is " +
@@ -17,6 +20,9 @@ namespace FirstPersonSystem
 
         /// <summary>Mouse delta multiplier.</summary>
         public float MouseSensitivity => mouseSensitivity;
+
+        /// <summary>Right stick look speed at full deflection, in degrees per second.</summary>
+        public float GamepadSensitivity => gamepadSensitivity;
 
         /// <summary>Lowest pitch angle (looking down), in degrees.</summary>
         public float MinPitch => pitchClamp.x;
@@ -62,6 +68,13 @@ namespace FirstPersonSystem
         public float JumpHeight => jumpHeight;
         public float Gravity => gravity;
         public AnimationCurve AscentEase => ascentEase;
+
+        // A zero or positive gravity makes the jump velocity NaN (Sqrt of a negative) and the rig never fall.
+        internal void Validate()
+        {
+            jumpHeight = Mathf.Max(jumpHeight, 0f);
+            gravity = Mathf.Min(gravity, -0.01f);
+        }
     }
 
     /// <summary>Crouch speed, capsule heights and the stand/crouch transition speed.</summary>
@@ -119,5 +132,7 @@ namespace FirstPersonSystem
         public JumpSettings Jump => jump;
         public CrouchSettings Crouch => crouch;
         public FootstepSettings Footsteps => footsteps;
+
+        private void OnValidate() => jump.Validate();
     }
 }

@@ -16,6 +16,7 @@ namespace FirstPersonSystem
         private const float HeaderHeight = 26f;
         private const float PitchLimit = 90f;
         private const float MouseSensitivityMax = 1f;
+        private const float GamepadSensitivityMax = 720f;
         private const float FovMin = 30f;
         private const float FovMax = 100f;
         private const float FovTransitionSpeedMax = 20f;
@@ -76,6 +77,7 @@ namespace FirstPersonSystem
         private void DrawLook()
         {
             EditorGUILayout.Slider(_look.FindPropertyRelative("mouseSensitivity"), 0f, MouseSensitivityMax, new GUIContent("Mouse Sensitivity"));
+            EditorGUILayout.Slider(_look.FindPropertyRelative("gamepadSensitivity"), 0f, GamepadSensitivityMax, new GUIContent("Gamepad Sensitivity"));
 
             EditorGUILayout.Space(10);
             EditorGUILayout.LabelField("Pitch Clamp");

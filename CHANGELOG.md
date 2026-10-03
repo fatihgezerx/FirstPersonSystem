@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.1] - 2026-10-03
+
+### Fixed
+- Footsteps no longer throw `MissingComponentException` in the Editor when SurfaceEngine is installed but
+  the player has no `SurfaceHandler` (the handler is now fetched with `TryGetComponent` and null-checked).
+- An unassigned **Data** field now logs a clear error and disables the controller instead of throwing a
+  `NullReferenceException`.
+- A positive or zero **Gravity** (which made the jump velocity `NaN`) is now corrected to a negative value
+  by `FPSData.OnValidate`; **Jump Height** can no longer be negative.
+- A single long frame (hitch, breakpoint) no longer spikes gravity: frame time is clamped to 0.1 s.
+
+## [1.1.0] - 2026-10-03
+
+### Added
+- Gamepad support: left stick moves, right stick looks, South jumps, East crouches (hold), L3 runs.
+  Keyboard / mouse and gamepad are read together every frame.
+- `FPSData` > Look > **Gamepad Sensitivity** (degrees per second at full stick deflection).
+
+### Fixed
+- The controller loop no longer ends permanently when no keyboard or mouse is present (gamepad-only
+  setups, or a device unplugged and plugged back in).
+- Forced crouch under a low ceiling no longer disables and re-enables the `CharacterController` every
+  frame, which reset `isGrounded` and stopped footsteps / headbob while walking under the ceiling. The
+  stand-up check now uses `Physics.OverlapCapsuleNonAlloc` and skips the rig's own collider.
+
 ## [1.0.0] - 2026-10-03
 
 ### Added
