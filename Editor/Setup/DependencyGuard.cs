@@ -22,7 +22,7 @@ namespace FirstPersonSystem.Setup
     /// simply left out of compilation - no errors - and this guard offers to install what's missing:
     /// <list type="bullet">
     /// <item>Unity and third-party packages (UniTask, Input System) through the Package Manager.</item>
-    /// <item>The author's own systems (Surface Engine) by downloading their repository into
+    /// <item>The author's own systems (Surface Engine, UniMVC) by downloading their repository into
     /// <c>Assets/Scripts/...</c> - exactly as if it had been copied there by hand, so every file stays
     /// visible and editable.</item>
     /// </list>
@@ -45,6 +45,7 @@ namespace FirstPersonSystem.Setup
             Dependency.Package("UniTask", "UniTask", "HAS_UNITASK", "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask", "com.cysharp.unitask"),
             Dependency.Package("Input System", "Unity.InputSystem", "HAS_INPUT_SYSTEM", "com.unity.inputsystem", "com.unity.inputsystem"),
             Dependency.Repository("Surface Engine", "SurfaceSystem.Runtime", "HAS_SURFACE_SYSTEM", "https://github.com/fatihgezerx/SurfaceEngine", "Assets/Scripts/SurfaceEngine", "for playing footsteps through SurfaceHandler while the rig moves"),
+            Dependency.Repository("UniMVC", "UniMVC.Runtime", "HAS_UNIMVC", "https://github.com/fatihgezerx/UniMVC", "Assets/Scripts/MVC", "so the rig stops and frees the cursor while a panel that blocks gameplay is open"),
         };
 
         private static AddAndRemoveRequest _packageRequest;

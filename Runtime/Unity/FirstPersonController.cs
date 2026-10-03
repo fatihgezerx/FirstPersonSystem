@@ -48,6 +48,8 @@ namespace FirstPersonSystem
         private float _bumpTime = float.PositiveInfinity;
         private float _targetHeight;
         private bool _cursorLocked;
+        // A UniMVC panel or popup with Blocks Gameplay ticked is open: the rig reads no input and the cursor is the UI's.
+        private bool _blocked;
         private bool _wasGrounded = true;
         private bool _isCrouching;
         private Vector3 _standCameraLocalPosition;
@@ -102,12 +104,22 @@ namespace FirstPersonSystem
 
             SetCursorLocked(true);
 
+#if HAS_UNIMVC
+            UniMVC.UIBlocking.Changed += OnUIBlockingChanged;
+            OnUIBlockingChanged(UniMVC.UIBlocking.IsBlocking);
+#endif
+
             _loopCts = new CancellationTokenSource();
             LoopAsync(_loopCts.Token).Forget();
         }
 
         private void OnDisable()
         {
+#if HAS_UNIMVC
+            UniMVC.UIBlocking.Changed -= OnUIBlockingChanged;
+#endif
+            _blocked = false;
+
             _loopCts?.Cancel();
             _loopCts?.Dispose();
             _loopCts = null;
@@ -125,16 +137,21 @@ namespace FirstPersonSystem
                 var mouse = Mouse.current;
                 var gamepad = Gamepad.current;
 
-                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+                // While a blocking panel is open the cursor belongs to the UI: no Escape toggle, and a click must not
+                // re-lock it (that click is meant for a button).
+                if (!_blocked)
                 {
-                    SetCursorLocked(!_cursorLocked);
-                }
-                else if (!_cursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
-                {
-                    // Standard "click to capture" behavior: once unlocked (Escape, or focus was lost elsewhere),
-                    // the very first click back on the Game view re-locks and re-enables look immediately -
-                    // matching every other FPS, instead of requiring an Escape press first.
-                    SetCursorLocked(true);
+                    if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+                    {
+                        SetCursorLocked(!_cursorLocked);
+                    }
+                    else if (!_cursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame)
+                    {
+                        // Standard "click to capture" behavior: once unlocked (Escape, or focus was lost elsewhere),
+                        // the very first click back on the Game view re-locks and re-enables look immediately -
+                        // matching every other FPS, instead of requiring an Escape press first.
+                        SetCursorLocked(true);
+                    }
                 }
 
                 // The Editor (and most builds) silently force the cursor unlocked whenever the Game view/
@@ -157,14 +174,16 @@ namespace FirstPersonSystem
 
                 // Crouch held (Ctrl / gamepad East): always crouch. Released: stand back up, unless something above
                 // would block it - in which case stay crouched (forced, not a toggle) until the obstruction clears.
-                var crouchHeld = (keyboard != null && keyboard.leftCtrlKey.isPressed) || (gamepad != null && gamepad.buttonEast.isPressed);
+                // While blocked every input reads as "nothing pressed": the rig stops, stands up if it can, and
+                // still falls and lands (gravity and the headbob keep running).
+                var crouchHeld = !_blocked && ((keyboard != null && keyboard.leftCtrlKey.isPressed) || (gamepad != null && gamepad.buttonEast.isPressed));
                 _isCrouching = crouchHeld || (_isCrouching && IsStandUpBlocked());
 
-                var isRunning = (keyboard != null && keyboard.leftShiftKey.isPressed) || (gamepad != null && gamepad.leftStickButton.isPressed);
+                var isRunning = !_blocked && ((keyboard != null && keyboard.leftShiftKey.isPressed) || (gamepad != null && gamepad.leftStickButton.isPressed));
                 var speed = _isCrouching ? data.Crouch.CrouchSpeed : isRunning ? data.Move.RunSpeed : data.Move.WalkSpeed;
 
-                var jumpPressed = (keyboard != null && keyboard.spaceKey.wasPressedThisFrame) || (gamepad != null && gamepad.buttonSouth.wasPressedThisFrame);
-                var moveInput = ReadMoveInput(keyboard, gamepad);
+                var jumpPressed = !_blocked && ((keyboard != null && keyboard.spaceKey.wasPressedThisFrame) || (gamepad != null && gamepad.buttonSouth.wasPressedThisFrame));
+                var moveInput = _blocked ? Vector2.zero : ReadMoveInput(keyboard, gamepad);
                 var isMoving = Move(moveInput, speed, jumpPressed, deltaTime, out var justLanded, out var justJumped, out var grounded);
 
                 UpdateCrouch(_isCrouching, deltaTime);
@@ -461,6 +480,16 @@ namespace FirstPersonSystem
             Cursor.lockState = locked ? CursorLockMode.Locked : CursorLockMode.None;
             Cursor.visible = !locked;
         }
+
+#if HAS_UNIMVC
+        // UniMVC is an optional dependency (HAS_UNIMVC): a panel or popup with Blocks Gameplay ticked frees the
+        // cursor and stops all movement and look; when the last one closes the rig takes the cursor back.
+        private void OnUIBlockingChanged(bool blocking)
+        {
+            _blocked = blocking;
+            SetCursorLocked(!blocking);
+        }
+#endif
 
         // SurfaceSystem is an optional dependency (Editor/Setup/DependencyGuard.cs, HAS_SURFACE_SYSTEM) - both
         // branches keep the exact same shape so the rest of the class never needs its own #if.

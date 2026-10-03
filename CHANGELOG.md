@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0] - 2026-10-03
+
+### Added
+- UniMVC integration (optional dependency, `HAS_UNIMVC`): while a panel or popup with **Blocks Gameplay**
+  ticked is open (`UIBlocking.IsBlocking`), the rig stops reading movement, look, jump, crouch and run input,
+  releases the cursor and ignores Esc / click-to-capture; when the last blocking panel closes the cursor is
+  captured again. A rig in the air still falls and lands.
+- `DependencyGuard` offers UniMVC as an optional dependency.
+
 ## [1.1.2] - 2026-10-03
 
 ### Fixed

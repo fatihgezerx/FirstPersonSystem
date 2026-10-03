@@ -45,14 +45,15 @@ assigned.
 - Unity [Input System](https://docs.unity3d.com/Packages/com.unity.inputsystem@latest) package, with
   **Active Input Handling** set to *Input System Package* or *Both* (required)
 - [SurfaceEngine](https://github.com/fatihgezerx/SurfaceEngine) (optional, for surface-aware footsteps)
+- [UniMVC](https://github.com/fatihgezerx/UniMVC) (optional, so the rig stands by while a panel that blocks gameplay is open)
 
 ### Installation
 
 Clone or download this repository, then copy its contents into `Assets/Scripts/FirstPersonSystem/`.
 
 On the first import FirstPersonSystem's setup dialog offers to install whatever is missing: UniTask and
-the Input System through the Package Manager, SurfaceEngine by downloading its repository into
-`Assets/Scripts/SurfaceEngine/`. Until the required dependencies are present, the runtime and editor
+the Input System through the Package Manager, SurfaceEngine and UniMVC by downloading their repositories into
+`Assets/Scripts/SurfaceEngine/` and `Assets/Scripts/MVC/`. Until the required dependencies are present, the runtime and editor
 assemblies are simply left out of compilation, so adding FirstPersonSystem to a project never
 produces compile errors.
 
@@ -84,6 +85,15 @@ a child, because yaw rotates the body and pitch rotates only the camera pivot.
 | `Esc` | - | Release / recapture the cursor |
 
 The bindings are fixed in code; there is no rebinding yet.
+
+### Panels that block gameplay (optional)
+
+With [UniMVC](https://github.com/fatihgezerx/UniMVC) installed, tick **Blocks Gameplay** on a panel or popup
+the player works in (an inventory window, a pause menu). While any such panel is open the rig reads no input:
+movement, look, jump, crouch and run stop, the mouse cursor is released and visible, and Esc / click-to-capture
+are ignored so a click on a button never re-locks it. A rig that is in the air still falls and lands, and a
+crouching one stands up if there is room. When the last blocking panel closes, the cursor is captured again
+and the rig responds right away. Panels with **Blocks Gameplay** off change nothing.
 
 ### Surface footsteps (optional)
 
