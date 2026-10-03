@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using UnityEngine;
@@ -6,14 +7,20 @@ using UnityEngine.InputSystem;
 namespace FirstPersonSystem
 {
     /// <summary>
-    /// WASD + mouse-look first person rig. Runs its own per-frame loop via UniTask (no Update), moves a
-    /// CharacterController, and optionally plays footsteps through SurfaceSystem and bobs the camera through
-    /// <see cref="HeadbobData"/> - both fully optional, the rig works correctly with neither assigned.
+    /// First person rig for keyboard / mouse and gamepad. Runs its own per-frame loop via UniTask (no Update),
+    /// moves a CharacterController, and optionally plays footsteps through SurfaceSystem and bobs the camera
+    /// through <see cref="HeadbobData"/> - both fully optional, the rig works correctly with neither assigned.
     /// </summary>
     /// <remarks>
+    /// Input comes from the project-wide input actions (<c>InputSystem.actions</c>), by name: <c>Move</c> and
+    /// <c>Look</c> (Vector2), <c>Jump</c>, <c>Crouch</c> and <c>Sprint</c> (buttons). An action the project's asset
+    /// doesn't have is replaced by one built in code with the default keyboard / mouse and gamepad bindings, so the
+    /// rig also works in a project without any of them. Rebind them in the asset to change a key.
+    /// <para>
     /// Camera Pivot must be a child of this object (parent Main Camera under the Player at eye height) - yaw is
     /// applied to this transform, pitch to Camera Pivot's local rotation, so the camera only follows the body if
     /// it's actually parented under it.
+    /// </para>
     /// </remarks>
     [RequireComponent(typeof(CharacterController))]
     public sealed class FirstPersonController : MonoBehaviour
@@ -48,6 +55,13 @@ namespace FirstPersonSystem
         private float _bumpTime = float.PositiveInfinity;
         private float _targetHeight;
         private bool _cursorLocked;
+        private InputAction _move;
+        private InputAction _look;
+        private InputAction _jump;
+        private InputAction _crouch;
+        private InputAction _sprint;
+        // Actions this rig built itself because the project's asset lacks them (and so must disable and dispose).
+        private readonly List<InputAction> _ownedActions = new();
         // A UniMVC panel or popup with Blocks Gameplay ticked is open: the rig reads no input and the cursor is the UI's.
         private bool _blocked;
         private bool _wasGrounded = true;
@@ -78,6 +92,7 @@ namespace FirstPersonSystem
 
             _controller = GetComponent<CharacterController>();
             CacheSurfaceHandler();
+            BindActions();
 
             _targetHeight = data.Crouch.StandHeight;
             _controller.height = data.Crouch.StandHeight;
@@ -124,6 +139,7 @@ namespace FirstPersonSystem
             _loopCts?.Dispose();
             _loopCts = null;
 
+            ReleaseActions();
             SetCursorLocked(false);
         }
 
@@ -131,11 +147,11 @@ namespace FirstPersonSystem
         {
             while (!token.IsCancellationRequested)
             {
-                // Any of these may be null at any time (gamepad-only console, a device unplugged and plugged back
-                // in) - the loop just reads whatever is there this frame instead of ending.
+                // Gameplay input comes from the actions. Only the desktop cursor handling below reads devices
+                // directly, and either may be null at any time (gamepad-only console, a device unplugged and plugged
+                // back in) - the loop never ends because of that.
                 var keyboard = Keyboard.current;
                 var mouse = Mouse.current;
-                var gamepad = Gamepad.current;
 
                 // While a blocking panel is open the cursor belongs to the UI: no Escape toggle, and a click must not
                 // re-lock it (that click is meant for a button).
@@ -169,21 +185,21 @@ namespace FirstPersonSystem
 
                 if (_cursorLocked)
                 {
-                    Look(mouse, gamepad, deltaTime);
+                    Look(deltaTime);
                 }
 
                 // Crouch held (Ctrl / gamepad East): always crouch. Released: stand back up, unless something above
                 // would block it - in which case stay crouched (forced, not a toggle) until the obstruction clears.
                 // While blocked every input reads as "nothing pressed": the rig stops, stands up if it can, and
                 // still falls and lands (gravity and the headbob keep running).
-                var crouchHeld = !_blocked && ((keyboard != null && keyboard.leftCtrlKey.isPressed) || (gamepad != null && gamepad.buttonEast.isPressed));
+                var crouchHeld = !_blocked && _crouch.IsPressed();
                 _isCrouching = crouchHeld || (_isCrouching && IsStandUpBlocked());
 
-                var isRunning = !_blocked && ((keyboard != null && keyboard.leftShiftKey.isPressed) || (gamepad != null && gamepad.leftStickButton.isPressed));
+                var isRunning = !_blocked && _sprint.IsPressed();
                 var speed = _isCrouching ? data.Crouch.CrouchSpeed : isRunning ? data.Move.RunSpeed : data.Move.WalkSpeed;
 
-                var jumpPressed = !_blocked && ((keyboard != null && keyboard.spaceKey.wasPressedThisFrame) || (gamepad != null && gamepad.buttonSouth.wasPressedThisFrame));
-                var moveInput = _blocked ? Vector2.zero : ReadMoveInput(keyboard, gamepad);
+                var jumpPressed = !_blocked && _jump.WasPressedThisFrame();
+                var moveInput = _blocked ? Vector2.zero : Vector2.ClampMagnitude(_move.ReadValue<Vector2>(), 1f);
                 var isMoving = Move(moveInput, speed, jumpPressed, deltaTime, out var justLanded, out var justJumped, out var grounded);
 
                 UpdateCrouch(_isCrouching, deltaTime);
@@ -200,20 +216,15 @@ namespace FirstPersonSystem
             }
         }
 
-        // Mouse delta is already a per-frame amount; the stick is a rate, so it's scaled by deltaTime to stay
-        // frame-rate independent.
-        private void Look(Mouse mouse, Gamepad gamepad, float deltaTime)
+        // A mouse (any Pointer) delivers an amount per frame; a stick or any other device delivers a rate, so it is
+        // scaled by deltaTime to stay frame-rate independent. The device is told apart by what moved the action.
+        private void Look(float deltaTime)
         {
-            var delta = Vector2.zero;
-            if (mouse != null)
-            {
-                delta += mouse.delta.ReadValue() * data.Look.MouseSensitivity;
-            }
-
-            if (gamepad != null)
-            {
-                delta += gamepad.rightStick.ReadValue() * (data.Look.GamepadSensitivity * deltaTime);
-            }
+            var raw = _look.ReadValue<Vector2>();
+            var control = _look.activeControl;
+            var delta = control != null && control.device is Pointer
+                ? raw * data.Look.MouseSensitivity
+                : raw * (data.Look.GamepadSensitivity * deltaTime);
 
             transform.Rotate(Vector3.up, delta.x);
 
@@ -239,23 +250,75 @@ namespace FirstPersonSystem
             playerCamera.fieldOfView = Mathf.Lerp(playerCamera.fieldOfView, targetFov, data.Look.FovTransitionSpeed * deltaTime);
         }
 
-        // WASD (normalized, so diagonals aren't faster) plus the left stick (keeps its analog magnitude).
-        private static Vector2 ReadMoveInput(Keyboard keyboard, Gamepad gamepad)
+        // The project's action by name, or one built here with the default keyboard / mouse and gamepad bindings
+        // when the asset doesn't have it (or there is no project-wide asset at all).
+        private void BindActions()
         {
-            var input = Vector2.zero;
-            if (keyboard != null)
+            var asset = InputSystem.actions;
+
+            _move = Find(asset, "Move");
+            if (_move == null)
             {
-                var x = (keyboard.dKey.isPressed ? 1f : 0f) - (keyboard.aKey.isPressed ? 1f : 0f);
-                var y = (keyboard.wKey.isPressed ? 1f : 0f) - (keyboard.sKey.isPressed ? 1f : 0f);
-                input = new Vector2(x, y).normalized;
+                _move = Own(new InputAction("Move", InputActionType.Value, expectedControlType: "Vector2"));
+                _move.AddCompositeBinding("2DVector")
+                    .With("Up", "<Keyboard>/w").With("Down", "<Keyboard>/s")
+                    .With("Left", "<Keyboard>/a").With("Right", "<Keyboard>/d");
+                _move.AddBinding("<Gamepad>/leftStick");
             }
 
-            if (gamepad != null)
+            _look = Find(asset, "Look");
+            if (_look == null)
             {
-                input += gamepad.leftStick.ReadValue();
+                _look = Own(new InputAction("Look", InputActionType.Value, expectedControlType: "Vector2"));
+                _look.AddBinding("<Pointer>/delta");
+                _look.AddBinding("<Gamepad>/rightStick");
             }
 
-            return Vector2.ClampMagnitude(input, 1f);
+            _jump = Find(asset, "Jump") ?? OwnButton("Jump", "<Keyboard>/space", "<Gamepad>/buttonSouth");
+            _crouch = Find(asset, "Crouch") ?? OwnButton("Crouch", "<Keyboard>/leftCtrl", "<Gamepad>/buttonEast");
+            _sprint = Find(asset, "Sprint") ?? OwnButton("Sprint", "<Keyboard>/leftShift", "<Gamepad>/leftStickPress");
+
+            if (_ownedActions.Count > 0)
+            {
+                Debug.Log($"[FirstPersonController] Using built-in default bindings for: {string.Join(", ", _ownedActions.ConvertAll(action => action.name))} " +
+                          "(not found in the project-wide input actions).");
+            }
+
+            _move.Enable();
+            _look.Enable();
+            _jump.Enable();
+            _crouch.Enable();
+            _sprint.Enable();
+        }
+
+        private static InputAction Find(InputActionAsset asset, string actionName) =>
+            asset != null ? asset.FindAction(actionName) : null;
+
+        private InputAction Own(InputAction action)
+        {
+            _ownedActions.Add(action);
+            return action;
+        }
+
+        private InputAction OwnButton(string actionName, string keyboardBinding, string gamepadBinding)
+        {
+            var action = Own(new InputAction(actionName, InputActionType.Button, keyboardBinding));
+            action.AddBinding(gamepadBinding);
+            return action;
+        }
+
+        // Actions from the asset are shared with other systems, so they're left as they are; only the ones this
+        // rig built are switched off and disposed.
+        private void ReleaseActions()
+        {
+            foreach (var action in _ownedActions)
+            {
+                action.Disable();
+                action.Dispose();
+            }
+
+            _ownedActions.Clear();
+            _move = _look = _jump = _crouch = _sprint = null;
         }
 
         // Returns whether the rig counts as "walking" this frame (grounded + horizontal input), for the footstep

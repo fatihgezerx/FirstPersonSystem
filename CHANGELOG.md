@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.0] - 2026-10-03
+
+### Changed
+- Gameplay input is read from the project-wide input actions (`Move`, `Look`, `Jump`, `Crouch`, `Sprint`)
+  instead of polling `Keyboard` / `Mouse` / `Gamepad` directly, so bindings can be changed or rebound in your
+  input actions asset. An action the asset lacks is replaced by a built-in one with the previous default
+  bindings (the Console lists which). Mouse and stick look are told apart by the device that moved the action.
+- Esc and click-to-capture of the cursor still read the keyboard and mouse directly.
+
 ## [1.2.0] - 2026-10-03
 
 ### Added

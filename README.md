@@ -75,6 +75,11 @@ a child, because yaw rotates the body and pitch rotates only the camera pivot.
 
 **3. Press Play.**
 
+Input comes from the project-wide input actions (`InputSystem.actions`) by name - `Move`, `Look`, `Jump`,
+`Crouch` and `Sprint` - so the defaults below are whatever your actions asset binds, and rebinding is done there.
+An action your asset doesn't have is replaced by a built-in one with these default bindings (the Console shows
+which, once), so the rig also works in a project without any of them.
+
 | Keyboard / mouse | Gamepad | Action |
 |------------------|---------|--------|
 | `W` `A` `S` `D` | Left stick | Move |
@@ -84,7 +89,7 @@ a child, because yaw rotates the body and pitch rotates only the camera pivot.
 | `Space` | South button (A / Cross) | Jump |
 | `Esc` | - | Release / recapture the cursor |
 
-The bindings are fixed in code; there is no rebinding yet.
+Esc and click-to-capture for the mouse cursor are not actions: they read the keyboard and mouse directly.
 
 ### Panels that block gameplay (optional)
 
