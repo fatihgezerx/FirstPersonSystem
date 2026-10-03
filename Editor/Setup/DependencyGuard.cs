@@ -22,14 +22,13 @@ namespace FirstPersonSystem.Setup
     /// simply left out of compilation - no errors - and this guard offers to install what's missing:
     /// <list type="bullet">
     /// <item>Unity and third-party packages (UniTask, Input System) through the Package Manager.</item>
-    /// <item>The author's own systems (Surface System) by downloading their repository into
+    /// <item>The author's own systems (Surface Engine) by downloading their repository into
     /// <c>Assets/Scripts/...</c> - exactly as if it had been copied there by hand, so every file stays
     /// visible and editable.</item>
     /// </list>
     /// It also keeps <c>HAS_FIRST_PERSON_SYSTEM</c> set while First Person System is in the project, so code
     /// that uses it from outside can be left out of compilation once it's removed. When First Person System
-    /// is deleted, the guard clears every symbol it manages, since nothing would keep them up to date
-    /// afterwards; the guards of other systems still in the project set the shared ones again after the reload.
+    /// is deleted, the guard clears its own symbol and sets the shared ones to what is still installed, so other systems' assemblies that need them keep compiling.
     /// </remarks>
     [InitializeOnLoad]
     internal sealed class DependencyGuard : AssetPostprocessor, IActiveBuildTargetChanged
@@ -45,7 +44,7 @@ namespace FirstPersonSystem.Setup
         {
             Dependency.Package("UniTask", "UniTask", "HAS_UNITASK", "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask", "com.cysharp.unitask"),
             Dependency.Package("Input System", "Unity.InputSystem", "HAS_INPUT_SYSTEM", "com.unity.inputsystem", "com.unity.inputsystem"),
-            Dependency.Repository("Surface System", "SurfaceSystem.Runtime", "HAS_SURFACE_SYSTEM", "https://github.com/fatihgezerx/SurfaceEngine", "Assets/Scripts/SurfaceEngine", "for playing footsteps through SurfaceHandler while the rig moves"),
+            Dependency.Repository("Surface Engine", "SurfaceSystem.Runtime", "HAS_SURFACE_SYSTEM", "https://github.com/fatihgezerx/SurfaceEngine", "Assets/Scripts/SurfaceEngine", "for playing footsteps through SurfaceHandler while the rig moves"),
         };
 
         private static AddAndRemoveRequest _packageRequest;
@@ -72,15 +71,19 @@ namespace FirstPersonSystem.Setup
         private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
             // First Person System itself is being deleted: clear every symbol it manages, or a leftover one
-            // (e.g. HAS_SURFACE_SYSTEM once Surface System is gone too) would let a later copy compile against
+            // (e.g. HAS_SURFACE_SYSTEM once Surface Engine is gone too) would let a later copy compile against
             // a missing dependency. Also forget an earlier "Not now", so a fresh copy asks again.
             if (ContainsFile(deleted, SetupAsmdefFile))
             {
                 SessionState.EraseString(DeclinedKey);
+                // Dependency symbols are shared with other systems' assemblies (their Define Constraints), so they
+                // are set to what is actually installed now - never cleared blindly, or those assemblies would be
+                // left out of compilation while everything they need is still there.
                 var symbols = new Dictionary<string, bool> { [OwnDefine] = false };
+                var assemblies = FindAssemblyDefinitions();
                 foreach (var dependency in Dependencies)
                 {
-                    symbols[dependency.Define] = false;
+                    symbols[dependency.Define] = assemblies.ContainsKey(dependency.Assembly);
                 }
 
                 ApplyDefines(symbols);

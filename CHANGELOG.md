@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.2] - 2026-10-03
+
+### Fixed
+- Deleting First Person System no longer clears the define symbols it shares with other systems
+  (`HAS_UNITASK`, `HAS_INPUT_SYSTEM`): the guard now sets them to whatever is still installed, so other
+  systems' assemblies keep compiling.
+- The setup dialog now names the optional dependency "Surface Engine" instead of "Surface System".
+
 ## [1.1.1] - 2026-10-03
 
 ### Fixed
