@@ -1,3 +1,4 @@
+using System;
 using Veneer;
 using UnityEditor;
 using UnityEditor.UIElements;
@@ -7,32 +8,77 @@ using UnityEngine.UIElements;
 namespace FirstPersonSystem
 {
     /// <summary>
-    /// The two small controls the First Person System Inspectors need on top of the kit: a lower limit for a slider row's number
+    /// The small controls the First Person System Inspectors need on top of the kit: a lower limit for a slider row's number
     /// field (the runtime fields carry no <c>[Min]</c>, and the old Inspector's sliders kept the typed value inside their range), and
-    /// a two-handle slider for the pitch clamp, which is one <see cref="Vector2"/> in the data.
+    /// a two-handle slider for the pitch clamp, which is one <see cref="Vector2"/> in the data. Both are offered as custom widgets
+    /// (<see cref="RegisterSlider"/>, <see cref="RegisterMinMax"/>) that read their label, captions, unit and tooltip from the layout entry
+    /// of the field, so the Inspector Designer can still change those texts.
     /// </summary>
     internal static class FirstPersonControls
     {
         /// <summary>
-        /// Adds a kit slider row whose range is the soft range of the old Inspector, with an optional lower limit on its number field.
+        /// Registers a custom widget that draws the float at <paramref name="path"/> as a kit slider with a fixed soft range and an optional
+        /// lower limit. The label, the two end captions and the unit come from the layout entry of the path (nothing when there is none).
         /// </summary>
-        /// <param name="b">The builder; the row goes into its current container.</param>
+        /// <param name="type">The edited type.</param>
         /// <param name="path">The float property path.</param>
-        /// <param name="label">The row label.</param>
-        /// <param name="leftEnd">Caption under the slider's start.</param>
-        /// <param name="rightEnd">Caption under the slider's end.</param>
         /// <param name="low">Slider start.</param>
-        /// <param name="high">Slider end.</param>
-        /// <param name="unit">Unit text after the number.</param>
+        /// <param name="high">Slider end (soft: a larger value can still be typed).</param>
         /// <param name="minimum">Lowest value the number field accepts; NaN for no limit.</param>
-        internal static void Slider(
-            VeneerInspectorBuilder b, string path, string label, string leftEnd, string rightEnd, float low, float high, string unit, float minimum)
+        internal static void RegisterSlider(Type type, string path, float low, float high, float minimum)
         {
-            VisualElement row = b.Slider(path, label, leftEnd, rightEnd, low, high, unit);
-            if (!float.IsNaN(minimum))
+            VeneerCustomItems.RegisterWidget(type, path, (context, property) =>
             {
-                ClampMinimum(row, b.SerializedObject.FindProperty(path), minimum);
-            }
+                VeneerLayoutEntry entry = EntryOf(context, path);
+                VisualElement row = context.Builder.Slider(
+                    path,
+                    entry != null ? EmptyToNull(entry.Label) : null,
+                    entry != null ? EmptyToNull(entry.SliderLeft) : null,
+                    entry != null ? EmptyToNull(entry.SliderRight) : null,
+                    low,
+                    high,
+                    entry != null ? EmptyToNull(entry.Unit) : null);
+                if (!float.IsNaN(minimum))
+                {
+                    ClampMinimum(row, property, minimum);
+                }
+
+                return row;
+            });
+        }
+
+        /// <summary>
+        /// Registers a custom widget that draws the Vector2 at <paramref name="path"/> as a two-handle slider (<see cref="MinMaxRow"/>). The label
+        /// and the tooltip come from the layout entry of the path.
+        /// </summary>
+        /// <param name="type">The edited type.</param>
+        /// <param name="path">The Vector2 property path.</param>
+        /// <param name="limit">The slider runs from <c>-limit</c> to <c>limit</c>.</param>
+        /// <param name="lowEnd">Caption under the slider's start.</param>
+        /// <param name="highEnd">Caption under the slider's end.</param>
+        internal static void RegisterMinMax(Type type, string path, float limit, string lowEnd, string highEnd)
+        {
+            VeneerCustomItems.RegisterWidget(type, path, (context, property) =>
+            {
+                VeneerLayoutEntry entry = EntryOf(context, path);
+                string label = entry != null ? EmptyToNull(entry.Label) : null;
+                string tooltip = entry != null ? EmptyToNull(entry.Tooltip) : null;
+                return MinMaxRow(property, label ?? property.displayName, limit, tooltip ?? property.tooltip, lowEnd, highEnd);
+            });
+        }
+
+        /// <summary>The layout entry that holds <paramref name="path"/> in the layout being drawn, or null.</summary>
+        /// <param name="context">The context a custom widget is built with.</param>
+        /// <param name="path">The property path.</param>
+        internal static VeneerLayoutEntry EntryOf(VeneerCustomItemContext context, string path)
+        {
+            VeneerLayout layout = context.Layout;
+            return layout != null ? layout.FindEntry(path, out _, out _) : null;
+        }
+
+        private static string EmptyToNull(string text)
+        {
+            return string.IsNullOrEmpty(text) ? null : text;
         }
 
         /// <summary>
