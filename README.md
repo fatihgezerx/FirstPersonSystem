@@ -1,134 +1,30 @@
-# FirstPersonSystem
+# First Person System
 
-Data-driven first person controller for Unity: look, move, jump, crouch, headbob and surface footsteps.
-
-## Overview
-
-FirstPersonSystem is a WASD + mouse-look rig built on a `CharacterController`. Every number it uses
-lives in two ScriptableObjects - `FPSData` (look, move, jump, crouch, footsteps) and an optional
-`HeadbobData` (camera bob) - so a heavier, floatier or slower rig is a different asset, never a code
-change. Both have custom Inspectors; the headbob one includes a live preview panel.
-
-The controller owns no `Update`: it runs its own per-frame loop on UniTask, started in `OnEnable` and
-cancelled in `OnDisable`. Headbob and footsteps are both optional - the rig works with neither
-assigned.
-
-## Features
-
-- Keyboard / mouse **and gamepad** (left stick move, right stick look), read together every frame -
-  any device may be missing or unplugged at any time without stopping the rig
-- Mouse look with a pitch clamp, click-to-recapture cursor handling (Esc releases it, a click on the
-  Game view locks it again) and a smooth FOV narrowing while sprinting
-- Walk / run / crouch speeds; **crouch is hold-to-crouch** (`Left Ctrl` / gamepad East). When released
-  under a low ceiling the rig stays crouched until there is room to stand, checked against a configurable
-  layer mask (without toggling the `CharacterController`, so grounding is never disturbed)
-- Jump with height and gravity, plus an **Ascent Ease** curve that reshapes how the rise *looks*
-  without changing how high or how long the jump is
-- Speed is locked at the moment the feet leave the ground (jumping or walking off a ledge), so
-  holding or releasing Run in mid-air changes nothing - and crouch-jumping works
-- Optional camera headbob: continuous Idle (breathing), Walk, Run and Crouch sway, plus one-shot
-  **Jump Start** and **Land** bumps shaped by curves. While a land bump plays, the next jump is held
-  back for `Land Duration`, so a landing can never be cut off by an instant re-jump
-- Footsteps paced per move state (walk / run / crouch interval) and played immediately on landing,
-  through [SurfaceEngine](https://github.com/fatihgezerx/SurfaceEngine)'s `SurfaceHandler` when it is
-  installed - entirely independent of headbob
-- Custom Inspectors: `FPSData` with sliders and a pitch min/max slider; `HeadbobData` with an
-  Idle / Walk / Run / Crouch / Jump Start / Land tab strip and a live bottom preview
-- A dependency guard that installs what is missing and keeps the project compiling without it
+A first person rig for keyboard, mouse and gamepad. `FirstPersonController` moves a `CharacterController` (walk, run, jump, crouch with a stand-up check), looks with mouse or stick, eases the field of view while sprinting, plays footsteps through Surface Engine and bobs the camera through an optional `HeadbobData`. All tuning lives in two ScriptableObjects. It runs its own loop through UniTask (no `Update`).
 
 ## Setup
 
-### Requirements
+1. Put the rig on a GameObject with a `CharacterController` and parent the camera under it at eye height (the Camera Pivot must be a child, or the camera will not follow the body).
+2. Create **Create > First Person System > FPS Data** and assign it to the controller's *FPS Data* field (required).
+3. Optionally create **Create > First Person System > Headbob Data** for camera headbob; leave the field empty to turn headbob off.
+4. Input comes from the project-wide input actions by name (`Move`, `Look`, `Jump`, `Crouch`, `Sprint`); a missing action is replaced by a built-in default binding.
 
-- Unity 6000.3 LTS or newer
-- [UniTask](https://github.com/Cysharp/UniTask) (required)
-- Unity [Input System](https://docs.unity3d.com/Packages/com.unity.inputsystem@latest) package, with
-  **Active Input Handling** set to *Input System Package* or *Both* (required)
-- [SurfaceEngine](https://github.com/fatihgezerx/SurfaceEngine) (optional, for surface-aware footsteps)
-- [UniMVC](https://github.com/fatihgezerx/UniMVC) (optional, so the rig stands by while a panel that blocks gameplay is open)
+Dependencies are offered by the Setup guard: UniTask and Input System (required), Surface Engine (footsteps), UniMVC (stop and free the cursor while a blocking panel is open) and Veneer (the Inspector look, optional).
 
-### Installation
+## In the editor
 
-Clone or download this repository, then copy its contents into `Assets/Scripts/FirstPersonSystem/`.
+With **Veneer** in the project, the three Inspectors share the studio look (sky blue accent, header card, cards, tabs):
 
-On the first import FirstPersonSystem's setup dialog offers to install whatever is missing: UniTask and
-the Input System through the Package Manager, SurfaceEngine and UniMVC by downloading their repositories into
-`Assets/Scripts/SurfaceEngine/` and `Assets/Scripts/MVC/`. Until the required dependencies are present, the runtime and editor
-assemblies are simply left out of compilation, so adding FirstPersonSystem to a project never
-produces compile errors.
+- **FPS Data**: a header card with a walk / run speed pill and four tabs. *Move* holds the walk and run speeds and the footstep intervals, *Look* the mouse and gamepad sensitivity, the pitch clamp (one two-handle slider) and the run FOV, *Jump* the height, the gravity (with a take-off speed and rise time summary) and the ascent curve, *Crouch* the crouch speed, the stand and crouch heights, the transition speed and the stand-up obstruction layers. Hints warn when run is slower than walk, when the crouch is not lower than standing, and when a footstep interval is 0.
+- **Headbob Data**: a live preview card on top (pick Idle, Walk, Run, Crouch, Jump or Land and watch the camera dot move while you edit), then two tabs. *Moving* holds the Walk, Run and Crouch sway (frequency and amplitude) and the shared smoothing, *Idle and air* the breathing sway and the one-shot Jump start and Land bumps (curve, amplitude, duration). Frequency is in radians per second (6.28 is one bob per second).
+- **First Person Controller**: a header card whose pill shows what the rig is doing in Play Mode, a *Data* card (FPS Data, optional Headbob Data) and a *Camera* card (Camera Pivot, Player Camera) with hints for a missing Data asset and a pivot that is not a child of the rig.
 
-## Quick Start
+The studio look needs Veneer (`Assets/Scripts/Veneer`, installed by the Setup guard when you accept it). Without it the system still compiles and Unity's default Inspectors are used for FPS Data and Headbob Data.
 
-**1. Build the player.** Create a GameObject with a `CharacterController` and add
-`FirstPersonController` to it. Parent your **Main Camera** under it at eye height - the camera must be
-a child, because yaw rotates the body and pitch rotates only the camera pivot.
+## Folders
 
-**2. Create the data.** `Create > First Person System > FPS Data` and, optionally,
-`Create > First Person System > Headbob Data`. Assign them to the controller:
-
-| Field | Required | Notes |
-|-------|----------|-------|
-| Data | yes | `FPSData` asset |
-| Headbob Data | no | Leave empty to disable headbob entirely |
-| Camera Pivot | no | Child transform that pitch is applied to. Falls back to `Camera.main` |
-| Player Camera | no | Camera whose FOV changes while sprinting. Falls back to `Camera.main` |
-
-**3. Press Play.**
-
-Input comes from the project-wide input actions (`InputSystem.actions`) by name - `Move`, `Look`, `Jump`,
-`Crouch` and `Sprint` - so the defaults below are whatever your actions asset binds, and rebinding is done there.
-An action your asset doesn't have is replaced by a built-in one with these default bindings (the Console shows
-which, once), so the rig also works in a project without any of them.
-
-| Keyboard / mouse | Gamepad | Action |
-|------------------|---------|--------|
-| `W` `A` `S` `D` | Left stick | Move |
-| Mouse | Right stick | Look |
-| `Left Shift` | L3 (left stick click) | Run (hold) |
-| `Left Ctrl` | East button (B / Circle) | Crouch (hold) |
-| `Space` | South button (A / Cross) | Jump |
-| `Esc` | - | Release / recapture the cursor |
-
-Esc and click-to-capture for the mouse cursor are not actions: they read the keyboard and mouse directly.
-
-### Panels that block gameplay (optional)
-
-With [UniMVC](https://github.com/fatihgezerx/UniMVC) installed, tick **Blocks Gameplay** on a panel or popup
-the player works in (an inventory window, a pause menu). While any such panel is open the rig reads no input:
-movement, look, jump, crouch and run stop, the mouse cursor is released and visible, and Esc / click-to-capture
-are ignored so a click on a button never re-locks it. A rig that is in the air still falls and lands, and a
-crouching one stands up if there is room. When the last blocking panel closes, the cursor is captured again
-and the rig responds right away. Panels with **Blocks Gameplay** off change nothing.
-
-### Surface footsteps (optional)
-
-Add a `SurfaceHandler` from SurfaceEngine to the same GameObject and initialize `SurfaceEngine` with a
-`SurfaceData` asset (see the SurfaceEngine README). The controller finds the handler on its own and
-calls `Footstep()` at the interval of the current move state and on every landing.
-
-## FPS Data
-
-| Section | Settings |
-|---------|----------|
-| Look | Mouse Sensitivity, Gamepad Sensitivity (degrees per second at full stick), Pitch Clamp, Run FOV, FOV Transition Speed |
-| Move | Walk Speed, Run Speed |
-| Jump | Jump Height, Gravity, Ascent Ease |
-| Crouch | Crouch Speed, Stand Height, Crouch Height, Transition Speed, Stand Up Obstruction Mask |
-| Footsteps | Walk / Run / Crouch Interval (seconds) |
-
-The "normal" FOV is whatever is already set on the Player Camera; Run FOV is only the target while
-sprinting (grounded, moving, Shift held, not crouching).
-
-## Headbob Data
-
-| Section | Settings |
-|---------|----------|
-| Idle (Breathing) | Frequency, Amplitude |
-| Walk / Run / Crouch | Frequency, Amplitude |
-| Jump Start | Curve, Amplitude, Duration (one-shot, vertical only) |
-| Land | Curve, Amplitude, Duration (one-shot, vertical only) |
-| Blend | Smoothing - how quickly the continuous sway blends between states |
-
-## License
-
-[MIT License](LICENSE)
+- `Runtime/` the controller and the two data assets (`FirstPersonSystem.Runtime`).
+- `Editor/` the default-Inspector fallbacks (`FirstPersonSystem.Editor`; the classes exist only while the kit is missing).
+- `Editor/Studio/` the studio-look Inspectors and the headbob preview (`FirstPersonSystem.Editor.Studio`, needs `HAS_VENEER`).
+- `Editor/Brand/` logo, banner and the brand style sheet.
+- `Editor/Setup/` the dependency guard.

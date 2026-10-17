@@ -1,0 +1,23 @@
+{
+    "name": "FirstPersonSystem.Editor.Studio",
+    "rootNamespace": "FirstPersonSystem",
+    "references": [
+        "FirstPersonSystem.Runtime",
+        "Veneer.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [
+        "HAS_VENEER",
+        "HAS_UNITASK",
+        "HAS_INPUT_SYSTEM"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

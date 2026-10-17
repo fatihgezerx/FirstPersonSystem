@@ -1,0 +1,48 @@
+/*
+ * First Person System - brand styles, added on top of the Veneer sheet.
+ *
+ * The accent is the exact First Person System sky blue (#00A2C7). The brand passes the class "fps-accent" as its accent class, so the
+ * kit adds no accent preset of its own and these rules are the only ones that set the accent variables.
+ * The rest styles the pitch clamp row and the headbob preview of the Inspectors.
+ */
+
+.vn-root.fps-accent {
+    --vn-accent: #00A2C7;
+    --vn-accent-soft: rgba(0, 162, 199, 0.16);
+    --vn-accent-line: rgba(0, 162, 199, 0.55);
+    --vn-pressed: rgba(0, 162, 199, 0.24);
+}
+
+.vn-root.vn-root--light.fps-accent {
+    --vn-accent: #007A97;
+    --vn-accent-soft: rgba(0, 122, 151, 0.14);
+    --vn-accent-line: rgba(0, 122, 151, 0.60);
+    --vn-pressed: rgba(0, 122, 151, 0.22);
+}
+
+/* ------------------------------------------------------------------ pitch clamp row */
+
+.fps-readout {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin: 0 4px 0 0;
+    -unity-text-align: middle-right;
+}
+
+/* ------------------------------------------------------------------ headbob preview */
+
+.fps-preview {
+    height: 130px;
+    flex-shrink: 0;
+    margin: 4px 0 6px 0;
+    border-radius: 5px;
+    background-color: var(--vn-track);
+}
+
+.fps-preview-states {
+    margin-bottom: 2px;
+}
+
+.fps-preview-caption {
+    margin: 0 0 4px 0;
+}

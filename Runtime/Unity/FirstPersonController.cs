@@ -73,6 +73,52 @@ namespace FirstPersonSystem
         // Reused by every stand-up obstruction query so a forced crouch never allocates.
         private readonly Collider[] _obstructionBuffer = new Collider[8];
 
+        /// <summary>
+        /// While true the rig plays no walking sway and no footsteps (the sway eases out through
+        /// <see cref="HeadbobData.Smoothing"/>), for something else that moves the body and the camera on its own -
+        /// a dodge, a slide, a dash. Jump and land bumps still play. Whoever sets it must clear it again.
+        /// </summary>
+        public bool FeedbackSuppressed { get; set; }
+
+        /// <summary>
+        /// While true the rig plays no walking sway (it eases out through <see cref="HeadbobData.Smoothing"/>) but
+        /// footsteps keep playing: for something that moves the camera itself while the feet still step, like a
+        /// sword swing. Whoever sets it must clear it again.
+        /// </summary>
+        public bool SwaySuppressed { get; set; }
+
+        /// <summary>
+        /// While true the rig walks at crouch speed and cannot sprint, whichever way it moves: for something that
+        /// weighs the body down, like swinging a sword. Whoever sets it must clear it again.
+        /// </summary>
+        public bool MovementSlowed { get; set; }
+
+        /// <summary>
+        /// While true the rig only moves forward: strafing and backward input are ignored (and, like
+        /// <see cref="MovementSlowed"/>, it walks at crouch speed and cannot sprint). For a committed move such as a
+        /// charging lunge, where the body must keep its heading. Whoever sets it must clear it again.
+        /// </summary>
+        public bool ForwardLocked { get; set; }
+
+        /// <summary>
+        /// While true the rig reads no input at all: no look, move, jump, sprint or crouch (it stops, stands up if it can, and
+        /// still falls and lands). For a character that cannot be controlled, like a dead one. Unlike a UniMVC panel it leaves the
+        /// cursor alone. Whoever sets it must clear it again.
+        /// </summary>
+        public bool InputLocked { get; set; }
+
+        /// <summary>Whether the rig is crouched right now (held, or forced by a low ceiling). Read-only: for what listens to it, like stealth.</summary>
+        public bool IsCrouching => _isCrouching;
+
+        /// <summary>Whether the rig is sprinting right now: moving on the ground with the sprint button held, not crouched and not slowed. Read-only.</summary>
+        public bool IsSprinting { get; private set; }
+
+        /// <summary>Whether the rig is in a jump: true from the take-off until it lands. Read-only: for what listens to it, like stealth.</summary>
+        public bool IsJumping { get; private set; }
+
+        /// <summary>Whether the rig's feet are on the ground: false in a jump and while it falls (walked off a ledge). Read-only: for what listens to it, like animation.</summary>
+        public bool IsGrounded { get; private set; } = true;
+
         // A hitch (scene load, breakpoint, alt-tab) can produce one huge frame; unclamped, it would spike gravity and
         // could push the CharacterController through thin floors.
         private const float MaxDeltaTime = 0.1f;
@@ -183,7 +229,8 @@ namespace FirstPersonSystem
 
                 var deltaTime = Mathf.Min(Time.deltaTime, MaxDeltaTime);
 
-                if (_cursorLocked)
+                var inputOff = _blocked || InputLocked;
+                if (_cursorLocked && !InputLocked)
                 {
                     Look(deltaTime);
                 }
@@ -192,22 +239,33 @@ namespace FirstPersonSystem
                 // would block it - in which case stay crouched (forced, not a toggle) until the obstruction clears.
                 // While blocked every input reads as "nothing pressed": the rig stops, stands up if it can, and
                 // still falls and lands (gravity and the headbob keep running).
-                var crouchHeld = !_blocked && _crouch.IsPressed();
+                var crouchHeld = !inputOff && _crouch.IsPressed();
                 _isCrouching = crouchHeld || (_isCrouching && IsStandUpBlocked());
 
-                var isRunning = !_blocked && _sprint.IsPressed();
-                var speed = _isCrouching ? data.Crouch.CrouchSpeed : isRunning ? data.Move.RunSpeed : data.Move.WalkSpeed;
+                var forwardLocked = ForwardLocked;
+                var slowed = MovementSlowed || forwardLocked;
+                var isRunning = !inputOff && !slowed && _sprint.IsPressed();
+                var speed = _isCrouching || slowed ? data.Crouch.CrouchSpeed : isRunning ? data.Move.RunSpeed : data.Move.WalkSpeed;
 
-                var jumpPressed = !_blocked && _jump.WasPressedThisFrame();
-                var moveInput = _blocked ? Vector2.zero : Vector2.ClampMagnitude(_move.ReadValue<Vector2>(), 1f);
+                var jumpPressed = !inputOff && _jump.WasPressedThisFrame();
+                var moveInput = inputOff ? Vector2.zero : Vector2.ClampMagnitude(_move.ReadValue<Vector2>(), 1f);
+                if (forwardLocked)
+                {
+                    moveInput = new Vector2(0f, Mathf.Max(0f, moveInput.y));
+                }
                 var isMoving = Move(moveInput, speed, jumpPressed, deltaTime, out var justLanded, out var justJumped, out var grounded);
+                IsJumping = justJumped || (IsJumping && !justLanded);
+                IsGrounded = grounded;
 
                 UpdateCrouch(_isCrouching, deltaTime);
-                UpdateHeadbob(isMoving, isRunning, _isCrouching, grounded, justJumped, justLanded, deltaTime);
-                UpdateFootsteps(isMoving, isRunning, _isCrouching, justLanded, deltaTime);
+                // A slowed rig walks at crouch speed, so its sway and its steps come at the crouch pace too.
+                var crouchPace = _isCrouching || slowed;
+                UpdateHeadbob(isMoving, isRunning, crouchPace, grounded, justJumped, justLanded, deltaTime);
+                UpdateFootsteps(isMoving, isRunning, crouchPace, justLanded, deltaTime);
                 // Narrows FOV only while actually sprinting (grounded, moving, Shift held, not crouching) - just
                 // holding Shift while standing still, crouched or airborne must not trigger it.
                 UpdateFov(isMoving && isRunning && !_isCrouching, deltaTime);
+                IsSprinting = isMoving && isRunning && !_isCrouching;
 
                 if (await UniTask.Yield(PlayerLoopTiming.Update, token).SuppressCancellationThrow())
                 {
@@ -459,7 +517,7 @@ namespace FirstPersonSystem
 
             float frequency;
             float amplitude;
-            if (!grounded)
+            if (!grounded || FeedbackSuppressed || SwaySuppressed)
             {
                 frequency = 0f;
                 amplitude = 0f;
@@ -518,7 +576,7 @@ namespace FirstPersonSystem
                 return;
             }
 
-            if (!isMoving)
+            if (!isMoving || FeedbackSuppressed)
             {
                 _footstepTimer = 0f;
                 return;
